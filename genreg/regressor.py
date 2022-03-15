@@ -95,10 +95,12 @@ class regressionModel():
 
         # Get weight columns
         weight_columns = [col for col in stats.columns \
-                            if ('weight_' in col and '.runbest' in col)]
+                            if ('weight_' in col and '.runbest' in col)] + ['constant.runbest']
         df_cols = weight_columns + ['_run', 'fit.runbest']
 
         def sort_fxn(key):
+            if key == 'constant.runbest':
+                return -1
             return int(key.split('_')[1])
 
         new_df = stats.melt(id_vars = ['_run', 'fit.runbest'], \
@@ -109,7 +111,10 @@ class regressionModel():
         new_df = new_df.drop_duplicates()
 
         for weight_name in weight_columns:
-            new_df = new_df.replace(weight_name, weight_name[7:-8])
+            if weight_name == 'constant.runbest':
+                new_df = new_df.replace(weight_name, 'constant')
+            else:
+                new_df = new_df.replace(weight_name, weight_name[7:-8])
 
         new_df['_run'] = new_df['_run'].astype(str)
 

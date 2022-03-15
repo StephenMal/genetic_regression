@@ -32,7 +32,8 @@ ga_params = {'n_runs':2, 'n_gens':20,\
              'xov_rate':0.9, 'xov_op':'twopt',\
              'mut_rate':0.2, 'mut_op':'uniform_mutation',\
              'header':feat_cols,\
-             'min':-1.0,'max':1.0}
+             'min':-1.0,'max':1.0,\
+             'dtype':float}
 
 genetic_regressor = geneticLogisticRegression(standardize=True, \
                                               normalize=False, \
