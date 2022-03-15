@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='geneticregression',
-    version='0.1.1',
+    version='0.1.2',
     description='Genetic Regression',
     url='https://github.com/StephenMal/genetic_regression',
     author='Stephen Maldonado',
