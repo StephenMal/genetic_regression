@@ -1,244 +1,146 @@
 import numpy as np
 
+try:
+    import pandas as pd
+except:
+    pass
+
 class preprocessor():
+
+    __slots__ = ('standardize', 'normalize', 'stats')
 
     def __init__(self, **kargs):
 
         # Booleans of whether we are applying standardization / normalization
-        self.standardize = kargs.get('standardize', False)
         self.normalize = kargs.get('normalize', False)
+        self.standardize = kargs.get('standardize', False)
+        # Contains stats of all the columns
+        self.stats = kargs.get('stats')
 
-        # Functions to apply standardization / normalization
-        self.apply_std = kargs.get('apply_std', None)
-        self.apply_nrm = kargs.get('apply_nrm', None)
+    def _set_stats(self, feats=None, lbls=None):
+        if self.stats is None:
+            self.stats = {'standardize':self.standardize,\
+                          'normalize':self.normalize}
 
-        # Functions to undo standardization / normalization
-        self.undo_std = kargs.get('undo_std', None)
-        self.undo_nrm = kargs.get('undo_nrm', None)
+        if isinstance(feats, pd.DataFrame):
+            self.stats.update({'mean':{col_name:float(feats[col_name].mean()) \
+                                      for col_name in feats.columns},\
+                               'stdev':{col_name:float(feats[col_name].std()) \
+                                      for col_name in feats.columns}, \
+                               'max':{col_name:float(feats[col_name].max()) \
+                                      for col_name in feats.columns}, \
+                               'min':{col_name:float(feats[col_name].min()) \
+                                      for col_name in feats.columns}})
+        elif isinstance(feats, np.ndarray):
+            if len(feats.shape) != 2:
+                raise ValueError('Expected 2D shape numpy array')
+            self.stats.update({'mean':{col_name:float(feats[col_name].mean()) \
+                                      for col_name in range(len(feats))},\
+                               'stdev':{col_name:float(feats[col_name].std()) \
+                                      for col_name in range(len(feats))}, \
+                               'max':{col_name:float(feats[col_name].max()) \
+                                      for col_name in range(len(feats))}, \
+                               'min':{col_name:float(feats[col_name].min()) \
+                                      for col_name in range(len(feats))}})
+        elif isinstance(feats, (list, tuple)):
+            if not all([isinstance(item, (list,tuple)) for item in feats]):
+                raise ValueError('Expected 2D list')
+            elif not all([len(item)==len(feats[0]) for item in feats]):
+                raise ValueError('Inconsistent lengths')
+            self.stats.update({'mean':{col_name:float(mean(feats[col_name])) \
+                                      for col_name in range(len(feats))},\
+                               'stdev':{col_name:float(stdev(feats[col_name])) \
+                                      for col_name in range(len(feats))}, \
+                               'max':{col_name:float(max(feats[col_name])) \
+                                      for col_name in range(len(feats))}, \
+                               'min':{col_name:float(min(feats[col_name])) \
+                                      for col_name in range(len(feats))}})
+        else:
+            raise TypeError(f'Expected DataFrame, Numpy ndarray, or list')
 
+        if lbls is not None:
 
-    # Fitting for normalization
-    def _fit_normalize(self, feats=None, lbls=None):
-        # Raise an error if not passed nparrays
-        if feats is not None and not isinstance(feats, np.ndarray):
-            raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-        if lbls is not None and not isinstance(lbls, np.ndarray):
-            raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-        # Function that returns the minimum, maximum, and range of values
-        #   in each column of a matrix
-        def get_nrm_params(values):
-            # Determine max, min, range
-            vmin, vmax = values.min(axis=0), values.max(axis=0)
-            vrange = vmax-vmin
-            return (vmin, vmax, vrange)
-
-        # Get parameters if provided data (otherwise assume not wanted)
-        f_params = None if feats is None else get_nrm_params(feats)
-        l_params = None if lbls is None else get_nrm_params(lbls)
-
-        # Performs the normalizations
-        def apply_nrm(values, params):
-            # Extract parameters
-            vmin, vmax, vrange = params
-            # Apply it to the values
-            if len(values.shape) == 2:
-                return np.array(\
-                        [[((float(v) - float(min))/(float(range)))  \
-                                    for v, min, range in zip(row, vmin, vrange)]\
-                                                            for row in values])
-            elif len(values.shape) == 1:
-                return np.array([((float(v) - float(vmin))/(float(vrange)))  \
-                                        for v in values])
-
-        def undo_nrm(values, params):
-            # Extract parameters
-            vmin, vmax, vrange = params
-            # Apply it to the values
-            if len(values.shape) == 2:
-                return np.array(\
-                        [[((float(v)*float(range))+float(min)) \
-                                    for v, min, range in zip(row, vmin, vrange)]\
-                                                        for row in values])
-            elif len(values.shape) == 1:
-                return np.array([((float(v)*float(vrange))+float(vmin)) \
-                                        for v in values])
-
-
-        # Create a function that will apply these on command
-        def nrmfxn(feats=None, lbls=None):
-            # Raise an error if not passed nparrays
-            if feats is not None and not isinstance(feats, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-            if lbls is not None and not isinstance(lbls, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-            # Apply to features
-            dct = {}
-            if f_params is not None and feats is not None:
-                dct['feats'] = apply_nrm(feats, f_params)
-            if l_params is not None and lbls is not None:
-                dct['lbls'] = apply_nrm(lbls, l_params)
-
-            return dct
-
-        def undo_nrmfxn(feats=None, lbls=None):
-            # Raise an error if not passed nparrays
-            if feats is not None and not isinstance(feats, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-            if lbls is not None and not isinstance(lbls, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-            # Apply to features
-            dct = {}
-            if f_params is not None and feats is not None:
-                dct['feats'] = undo_nrm(feats, f_params)
-            if l_params is not None and lbls is not None:
-                dct['lbls'] = undo_nrm(lbls, l_params)
-
-            return dct
-
-        return nrmfxn, undo_nrmfxn
-
-    # Fitting for standardization
-    def _fit_standardize(self, feats=None, lbls=None):
-        # Raise an error if not passed nparrays
-        if feats is not None and not isinstance(feats, np.ndarray):
-            raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-        if lbls is not None and not isinstance(lbls, np.ndarray):
-            raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-        # Function that returns the mean and stdev in each column of a matrix
-        def get_std_params(values):
-            # Determine mean and stdev of each column
-            vmean, vstdev = values.mean(axis=0), values.std(axis=0)
-            return (vmean, vstdev)
-
-        # Get parameters if provided data (otherwise assume not wanted)
-        f_params = None if feats is None else get_std_params(feats)
-        l_params = None if lbls is None else get_std_params(lbls)
-
-        # Performs the normalizations
-        def apply_std(values, params):
-            # Extract parameters
-            vmean, vstdev = params
-            # Apply it to the values
-            if len(values.shape) == 2:
-                return np.array(\
-                        [[((float(v) - float(mean))/(float(stdev)))  \
-                                for v, mean, stdev in zip(row, vmean, vstdev)]\
-                                                            for row in values])
-            elif len(values.shape) == 1:
-                return np.array([((float(v) - float(vmean))/(float(vstdev)))  \
-                                    for v in values])
-            else:
-                raise ValueError('Expected shape of 1 or 2 dimensions')
-
-        # Performs the normalizations
-        def undo_std(values, params):
-            # Extract parameters
-            vmean, vstdev = params
-            # Apply it to the values
-            if len(values.shape) == 2:
-                return np.array(\
-                        [[((float(v)*float(stdev))+float(mean)) \
-                                for v, mean, stdev in zip(row, vmean, vstdev)]\
-                                                            for row in values])
-            elif len(values.shape) == 1:
-                return np.array([((float(v)*float(vstdev))+float(vmean))
-                                    for v in values])
-            else:
-                raise ValueError('Expected shape of 1 or 2 dimensions')
-
-        # Create a function that will apply these on command
-        def stdfxn(feats=None, lbls=None):
-            # Raise an error if not passed nparrays
-            if feats is not None and not isinstance(feats, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-            if lbls is not None and not isinstance(lbls, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-            # Apply to features
-            dct = {}
-            if f_params is not None and feats is not None:
-                dct['feats'] = apply_std(feats, f_params)
-            if l_params is not None and lbls is not None:
-                dct['lbls'] = apply_std(lbls, l_params)
-
-            return dct
-
-        # Create a function that will apply these on command
-        def undo_stdfxn(feats=None, lbls=None):
-            # Raise an error if not passed nparrays
-            if feats is not None and not isinstance(feats, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(feats)}')
-            if lbls is not None and not isinstance(lbls, np.ndarray):
-                raise TypeError(f'Expected numpy ndarray, not {type(lbls)}')
-
-            # Apply to features
-            dct = {}
-            if f_params is not None and feats is not None:
-                dct['feats'] = undo_std(feats, f_params)
-            if l_params is not None and lbls is not None:
-                dct['lbls'] = undo_std(lbls, l_params)
-
-            return dct
-
-        return stdfxn, undo_stdfxn
-
-    # Fit the preprocessor
-    def fit(self, feats=None, lbls=None, **kargs):
-
-        # If provided values, turn into numpy arrays (if not already)
-        if feats is not None and not isinstance(feats, np.ndarray):
-            feats = np.array(feats)
-        if lbls is not None and not isinstance(lbls, np.ndarray):
-            lbls = np.array(lbls)
-
-        if 'standardize' in kargs:
-            self.standardize = kargs.get('standardize')
-        if 'normalize' in kargs:
-            self.normalize = kargs.get('normalize')
-
-        if self.standardize and self.normalize:
-            raise ValueError('Cannot apply both standardization and normalization')
-
-        # Builds normalization function and nulls any pre-existing standardization
-        if self.normalize:
-            self.apply_std, self.undo_std = None, None
-            self.apply_nrm, self.undo_nrm = \
-                                    self._fit_normalize(feats=feats, lbls=lbls)
-
-        # Builds standardization function and nulls any pre-existing normalization
-        if self.standardize:
-            self.apply_nrm, self.undo_nrm = None, None
-            self.apply_std, self.undo_std = \
-                                self._fit_standardize(feats=feats, lbls=lbls)
-
+            if isinstance(lbls, (pd.DataFrame, pd.Series)):
+                self.stats.update({'lbl_info':{'mean':float(lbls.mean()),\
+                                               'stdev':float(lbls.std()),\
+                                               'max':float(lbls.max()),\
+                                               'min':float(lbls.min())}})
+            elif isinstance(lbls, np.ndarray):
+                if len(lbls.shape) != 1:
+                    raise ValueError('Expected 1D shape numpy array')
+                self.stats.update({'lbl_info':{'mean':float(lbls.mean()),\
+                                               'stdev':float(lbls.std()),\
+                                               'max':float(lbls.max()),\
+                                               'min':float(lbls.min())}})
+            elif isinstance(lbls, (list, tuple)):
+                self.stats.update({'lbl_info':{'mean':float(mean(lbls)),\
+                                               'stdev':float(stdev(lbls)),\
+                                               'max':float(max(lbls)),\
+                                               'min':float(min(lbls))}})
         return
 
-    # Applies the preprocessing
-    def apply(self, feats=None, lbls=None):
-        # Raises error if has fxn for both
-        if self.apply_nrm is not None and self.apply_std is not None:
-            raise Exception('Preprocessor has standardization and '+\
-                            'normalization which should not be possible.')
-        elif self.apply_nrm is not None:
-            return self.apply_nrm(feats=feats, lbls=lbls)
-        elif self.apply_std is not None:
-            return self.apply_std(feats=feats, lbls=lbls)
-        else:
-            return {'feats':feats, 'lbls':lbls}
 
-    # Undoes the preprocessing
-    def undo(self, feats=None, lbls=None):
-        # Raises error if has fxn for both
-        if self.undo_nrm is not None and self.undo_std is not None:
-            raise Exception('Preprocessor has standardization and '+\
-                            'normalization which should not be possible.')
-        elif self.undo_nrm is not None:
-            return self.undo_nrm(feats=feats, lbls=lbls)
-        elif self.undo_std is not None:
-            return self.undo_std(feats=feats, lbls=lbls)
-        else:
-            return {'feats':feats, 'lbls':lbls}
+    def fit(self, feats=None, lbls=None):
+        # Set statistics dictionary
+        self._set_stats(feats=feats, lbls=lbls)
+
+    def transform(self, feats=None, lbls=None):
+        new_feats = feats.copy()
+
+        if isinstance(feats, (pd.DataFrame, pd.Series, np.ndarray)):
+            if self.normalize:
+                for col in feats.columns:
+                    new_feats[col] = \
+                            (new_feats[col] - new_feats[col].min()) / \
+                                (new_feats[col].max() - new_feats[col].min())
+            if self.standardize:
+                for col in feats.columns:
+                    new_feats[col] = (new_feats[col] - new_feats[col].mean()) /\
+                                                            new_feats[col].std()
+        elif isinstance(feats, (list, tuple)):
+            if self.normalize:
+                for i in range(len(feats)):
+                    cmin, cmax = min(new_feats[i]), max(new_feats[i])
+                    new_feats[i] = [(v - cmin)/(cmax-cmin) for v in new_feats[i]]
+            if self.standardize:
+                for i in range(len(feats)):
+                    cmean, cstd = mean(new_feats[i]), stdev(new_feats[i])
+                    new_feats[i] = [((v - cmean) / cstd) for v in new_feats[i]]
+
+        if lbls is not None:
+            new_lbls = new_lbls.copy()
+            if isinstance(lbls, (pd.Series, np.ndarray)):
+                if self.normalize:
+                    new_lbls = (new_lbls - new_lbls.min()) / \
+                                            (new_lbls.max() - new_lbls.min())
+                if self.standardize:
+                    new_lbls = (new_lbls - new_lbls.mean()) / new_lbls.std()
+            elif isinstance(lbls, (list, tuple)):
+                if self.normalize:
+                    new_lbls = (new_lbls - new_lbls.min()) / \
+                                            (new_lbls.max() - new_lbls.min())
+                if self.standardize:
+                    new_lbls = (new_lbls - new_lbls.mean()) / new_lbls.std()
+            return new_feats, new_lbls
+
+        return new_feats
+
+    def fit_transform(self, feats=None, lbls=None):
+        self.fit(feats=feats, lbls=lbls)
+        return self.transform(feats=feats, lbls=lbls)
+
+    def to_dict(self):
+        return self.stats
+
+    def from_dict(self):
+        self.stats = stats_dct.copy()
+        self.normalize = stats_dct.get('normalize', False)
+        self.standardize = stats_dct.get('standardize', False)
+
+    def __getstate__(self):
+        return self.stats
+
+    def __setstate__(self, stats_dct):
+        self.stats = stats_dct.copy()
+        self.normalize = stats_dct.get('normalize', False)
+        self.standardize = stats_dct.get('standardize', False)
